@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { computeStates, dependentsMap, downstream, upstream } from '../domain/graph';
-import { useStore } from './store';
+import { selectTasks, useStore } from './store';
 
 /** 表示状態・依存関係・選択中タスクの上流/下流など、タスクから計算する値 */
 export function useDerived() {
-  const tasks = useStore((s) => s.tasks);
+  const tasks = useStore(selectTasks);
   const labels = useStore((s) => s.labels);
   const selectedId = useStore((s) => s.selectedId);
   const labelFilter = useStore((s) => s.labelFilter);

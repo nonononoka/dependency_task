@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseBulk } from '../domain/bulk';
-import { useStore } from '../store/store';
+import { selectProject, useStore } from '../store/store';
 
 const PLACEHOLDER = `API設計 @佐藤
 API実装 @鈴木 <- API設計 [doing]
@@ -9,8 +9,8 @@ API実装 @鈴木 <- API設計 [doing]
 
 export function BulkAddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const tasks = useStore((s) => s.tasks);
-  const nextNo = useStore((s) => s.nextNo);
+  const tasks = useStore((s) => selectProject(s).tasks);
+  const nextNo = useStore((s) => selectProject(s).nextNo);
   const members = useStore((s) => s.members);
   const addTasks = useStore((s) => s.addTasks);
   const notify = useStore((s) => s.notify);

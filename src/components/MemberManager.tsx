@@ -74,7 +74,7 @@ export function MemberManager({ d }: { d: Derived }) {
       <button type="button" className="add-row" onClick={() => setFocusId(addMember())}>
         ＋ 担当者を追加
       </button>
-      {d.members.length > 0 && <p className="muted small">件数は「未完了 / 全体」。押すとその人のタスクだけを強調します。</p>}
+      {d.members.length > 0 && <p className="muted small">担当者は全プロジェクト共通。件数はこのプロジェクト内の「未完了 / 全体」で、押すとその人のタスクだけを強調します。</p>}
     </div>
   );
 }

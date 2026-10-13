@@ -37,9 +37,26 @@ export interface Member {
   name: string;
 }
 
+/** 1 プロジェクト分の書き出し形式（version 3 まで）。今は旧ファイルの読み込みにだけ使う */
 export interface ProjectData {
   version: 3;
   tasks: Task[];
+  labels: Label[];
+  members: Member[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  tasks: Task[];
+  /** 次に振る表示用の連番 */
+  nextNo: number;
+}
+
+/** 全プロジェクトの保存・書き出し形式。担当者とラベルは全プロジェクト共通 */
+export interface WorkspaceData {
+  version: 4;
+  projects: Project[];
   labels: Label[];
   members: Member[];
 }

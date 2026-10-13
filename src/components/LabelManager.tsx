@@ -100,7 +100,7 @@ export function LabelManager({ d }: { d: Derived }) {
       <button type="button" className="add-row" onClick={() => setFocusId(addLabel())}>
         ＋ ラベルを追加
       </button>
-      {d.labels.length > 0 && <p className="muted small">件数を押すと、そのラベルのタスクだけを強調します。</p>}
+      {d.labels.length > 0 && <p className="muted small">ラベルは全プロジェクト共通。件数はこのプロジェクト内の数で、押すとそのラベルのタスクだけを強調します。</p>}
     </div>
   );
 }

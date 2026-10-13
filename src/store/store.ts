@@ -1,9 +1,18 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { cycleIfAdded, formatCycle } from '../domain/graph';
-import { nextLabelColor, nextNoOf, parseProjectData } from '../domain/persist';
-import { sampleData } from '../domain/sample';
-import { newId, type Label, type Member, type ProjectData, type Status, type Task } from '../domain/types';
+import { nextLabelColor, nextNoOf, parseProjectData, parseWorkspaceData } from '../domain/persist';
+import { sampleWorkspace } from '../domain/sample';
+import {
+  newId,
+  type Label,
+  type Member,
+  type Project,
+  type ProjectData,
+  type Status,
+  type Task,
+  type WorkspaceData,
+} from '../domain/types';
 
 interface Toast {
   key: number;
@@ -11,10 +20,11 @@ interface Toast {
 }
 
 interface State {
-  tasks: Task[];
+  projects: Project[];
+  currentProjectId: string;
+  /** ラベル・担当者は全プロジェクト共通 */
   labels: Label[];
   members: Member[];
-  nextNo: number;
   selectedId: string | null;
   /** このラベルのタスクだけを強調する（保存しない） */
   labelFilter: string | null;
@@ -26,6 +36,7 @@ interface State {
   sideCollapsed: boolean;
   toast: Toast | null;
 
+  // 表示中のプロジェクトのタスク
   addTask: (title?: string) => string;
   addTasks: (tasks: Task[], members?: Member[]) => void;
   updateTitle: (id: string, title: string) => void;
@@ -35,37 +46,62 @@ interface State {
   addDep: (taskId: string, depId: string) => boolean;
   removeDep: (taskId: string, depId: string) => void;
   setTaskLabel: (id: string, labelId: string | null) => void;
+  setAssignee: (taskId: string, memberId: string | null) => void;
+  /** 名前で担当者を付ける。同名の担当者がいなければ作る */
+  assignByName: (taskId: string, name: string) => void;
+  clearTasks: () => void;
+
+  // ラベル・担当者（削除すると全プロジェクトのタスクから外す）
   addLabel: (name?: string) => string;
   updateLabel: (id: string, patch: Partial<Omit<Label, 'id'>>) => void;
   removeLabel: (id: string) => void;
   setLabelFilter: (id: string | null) => void;
-  setAssignee: (taskId: string, memberId: string | null) => void;
-  /** 名前で担当者を付ける。同名の担当者がいなければ作る */
-  assignByName: (taskId: string, name: string) => void;
   addMember: (name?: string) => string;
   renameMember: (id: string, name: string) => void;
   removeMember: (id: string) => void;
   setAssigneeFilter: (id: string | null) => void;
-  replaceAll: (data: Omit<ProjectData, 'version'>) => void;
+
+  // プロジェクト
+  switchProject: (id: string) => void;
+  createProject: (name: string) => string;
+  renameProject: (id: string, name: string) => void;
+  duplicateProject: (id: string) => string;
+  /** 最後の 1 つは削除しない */
+  removeProject: (id: string) => void;
+  replaceWorkspace: (data: WorkspaceData) => void;
+  /** 旧形式（1 プロジェクト分）のファイルを新しいプロジェクトとして追加する */
+  importProject: (data: ProjectData, name: string) => void;
+
   select: (id: string | null) => void;
   toggleTable: () => void;
   toggleSide: () => void;
   notify: (message: string) => void;
 }
 
-const initial = sampleData();
+export const selectProject = (s: Pick<State, 'projects' | 'currentProjectId'>): Project =>
+  s.projects.find((p) => p.id === s.currentProjectId) ?? s.projects[0];
+export const selectTasks = (s: Pick<State, 'projects' | 'currentProjectId'>): Task[] => selectProject(s).tasks;
+
+const initial = sampleWorkspace();
 
 export const useStore = create<State>()(
   persist(
     (set, get) => {
+      const updateCurrent = (fn: (p: Project) => Partial<Project>) =>
+        set((s) => {
+          const cur = selectProject(s);
+          return { projects: s.projects.map((p) => (p.id === cur.id ? { ...p, ...fn(p) } : p)) };
+        });
       const patch = (id: string, fn: (t: Task) => Task) =>
-        set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? fn(t) : t)) }));
+        updateCurrent((p) => ({ tasks: p.tasks.map((t) => (t.id === id ? fn(t) : t)) }));
+      const mapAllTasks = (projects: Project[], fn: (t: Task) => Task) =>
+        projects.map((p) => ({ ...p, tasks: p.tasks.map(fn) }));
 
       return {
-        tasks: initial.tasks,
+        projects: initial.projects,
+        currentProjectId: initial.projects[0].id,
         labels: initial.labels,
         members: initial.members,
-        nextNo: nextNoOf(initial.tasks),
         selectedId: null,
         labelFilter: null,
         assigneeFilter: null,
@@ -75,27 +111,26 @@ export const useStore = create<State>()(
 
         addTask: (title = '') => {
           const id = newId();
-          set((s) => ({
-            tasks: [...s.tasks, { id, no: s.nextNo, title, deps: [], status: 'todo', labelId: null, assigneeId: null }],
-            nextNo: s.nextNo + 1,
+          updateCurrent((p) => ({
+            tasks: [...p.tasks, { id, no: p.nextNo, title, deps: [], status: 'todo', labelId: null, assigneeId: null }],
+            nextNo: p.nextNo + 1,
           }));
           return id;
         },
-        addTasks: (tasks, members = []) =>
-          set((s) => ({
-            tasks: [...s.tasks, ...tasks],
-            members: [...s.members, ...members],
-            nextNo: Math.max(s.nextNo, nextNoOf(tasks)),
-          })),
+        addTasks: (tasks, members = []) => {
+          updateCurrent((p) => ({ tasks: [...p.tasks, ...tasks], nextNo: Math.max(p.nextNo, nextNoOf(tasks)) }));
+          set((s) => ({ members: [...s.members, ...members] }));
+        },
         updateTitle: (id, title) => patch(id, (t) => ({ ...t, title })),
         setStatus: (id, status) => patch(id, (t) => ({ ...t, status })),
-        removeTask: (id) =>
-          set((s) => ({
-            tasks: s.tasks.filter((t) => t.id !== id).map((t) => ({ ...t, deps: t.deps.filter((d) => d !== id) })),
-            selectedId: s.selectedId === id ? null : s.selectedId,
-          })),
+        removeTask: (id) => {
+          updateCurrent((p) => ({
+            tasks: p.tasks.filter((t) => t.id !== id).map((t) => ({ ...t, deps: t.deps.filter((d) => d !== id) })),
+          }));
+          set((s) => ({ selectedId: s.selectedId === id ? null : s.selectedId }));
+        },
         addDep: (taskId, depId) => {
-          const { tasks, notify } = get();
+          const tasks = selectTasks(get());
           const task = tasks.find((t) => t.id === taskId);
           if (!task || task.deps.includes(depId)) return false;
           const cycle = cycleIfAdded(tasks, taskId, depId);
@@ -104,7 +139,7 @@ export const useStore = create<State>()(
               const t = tasks.find((x) => x.id === id)!;
               return `#${t.no} ${t.title || '(無題)'}`;
             };
-            notify(
+            get().notify(
               cycle.length === 2
                 ? '自分自身には依存できません'
                 : `循環依存になるため追加できません: ${formatCycle(cycle, label)}`,
@@ -116,6 +151,18 @@ export const useStore = create<State>()(
         },
         removeDep: (taskId, depId) => patch(taskId, (t) => ({ ...t, deps: t.deps.filter((d) => d !== depId) })),
         setTaskLabel: (id, labelId) => patch(id, (t) => ({ ...t, labelId })),
+        setAssignee: (taskId, memberId) => patch(taskId, (t) => ({ ...t, assigneeId: memberId })),
+        assignByName: (taskId, rawName) => {
+          const name = rawName.trim();
+          if (!name) return get().setAssignee(taskId, null);
+          const found = get().members.find((m) => m.name === name);
+          get().setAssignee(taskId, found ? found.id : get().addMember(name));
+        },
+        clearTasks: () => {
+          updateCurrent(() => ({ tasks: [], nextNo: 1 }));
+          set({ selectedId: null });
+        },
+
         addLabel: (name = '') => {
           const id = newId();
           set((s) => ({ labels: [...s.labels, { id, name, color: nextLabelColor(s.labels) }] }));
@@ -125,17 +172,10 @@ export const useStore = create<State>()(
         removeLabel: (id) =>
           set((s) => ({
             labels: s.labels.filter((l) => l.id !== id),
-            tasks: s.tasks.map((t) => (t.labelId === id ? { ...t, labelId: null } : t)),
+            projects: mapAllTasks(s.projects, (t) => (t.labelId === id ? { ...t, labelId: null } : t)),
             labelFilter: s.labelFilter === id ? null : s.labelFilter,
           })),
         setLabelFilter: (id) => set({ labelFilter: id }),
-        setAssignee: (taskId, memberId) => patch(taskId, (t) => ({ ...t, assigneeId: memberId })),
-        assignByName: (taskId, rawName) => {
-          const name = rawName.trim();
-          if (!name) return get().setAssignee(taskId, null);
-          const found = get().members.find((m) => m.name === name);
-          get().setAssignee(taskId, found ? found.id : get().addMember(name));
-        },
         addMember: (name = '') => {
           const id = newId();
           set((s) => ({ members: [...s.members, { id, name }] }));
@@ -145,12 +185,65 @@ export const useStore = create<State>()(
         removeMember: (id) =>
           set((s) => ({
             members: s.members.filter((m) => m.id !== id),
-            tasks: s.tasks.map((t) => (t.assigneeId === id ? { ...t, assigneeId: null } : t)),
+            projects: mapAllTasks(s.projects, (t) => (t.assigneeId === id ? { ...t, assigneeId: null } : t)),
             assigneeFilter: s.assigneeFilter === id ? null : s.assigneeFilter,
           })),
         setAssigneeFilter: (id) => set({ assigneeFilter: id }),
-        replaceAll: ({ tasks, labels, members }) =>
-          set({ tasks, labels, members, nextNo: nextNoOf(tasks), selectedId: null, labelFilter: null, assigneeFilter: null }),
+
+        switchProject: (id) => set({ currentProjectId: id, selectedId: null }),
+        createProject: (name) => {
+          const id = newId();
+          set((s) => ({ projects: [...s.projects, { id, name, tasks: [], nextNo: 1 }], currentProjectId: id, selectedId: null }));
+          return id;
+        },
+        renameProject: (id, name) => set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, name } : p)) })),
+        duplicateProject: (id) => {
+          const src = get().projects.find((p) => p.id === id);
+          if (!src) return id;
+          const copy = { ...src, id: newId(), name: `${src.name} のコピー` };
+          set((s) => {
+            const i = s.projects.findIndex((p) => p.id === id);
+            return {
+              projects: [...s.projects.slice(0, i + 1), copy, ...s.projects.slice(i + 1)],
+              currentProjectId: copy.id,
+              selectedId: null,
+            };
+          });
+          return copy.id;
+        },
+        removeProject: (id) =>
+          set((s) => {
+            if (s.projects.length <= 1) return {};
+            const i = s.projects.findIndex((p) => p.id === id);
+            const projects = s.projects.filter((p) => p.id !== id);
+            if (s.currentProjectId !== id) return { projects };
+            return { projects, currentProjectId: projects[Math.min(i, projects.length - 1)].id, selectedId: null };
+          }),
+        replaceWorkspace: ({ projects, labels, members }) =>
+          set({
+            projects,
+            labels,
+            members,
+            currentProjectId: projects[0].id,
+            selectedId: null,
+            labelFilter: null,
+            assigneeFilter: null,
+          }),
+        importProject: ({ tasks, labels, members }, name) =>
+          set((s) => {
+            // 同じ id のラベル・担当者は既存のものを使い、ないものだけ足す
+            const labelIds = new Set(s.labels.map((l) => l.id));
+            const memberIds = new Set(s.members.map((m) => m.id));
+            const id = newId();
+            return {
+              labels: [...s.labels, ...labels.filter((l) => !labelIds.has(l.id))],
+              members: [...s.members, ...members.filter((m) => !memberIds.has(m.id))],
+              projects: [...s.projects, { id, name, tasks, nextNo: nextNoOf(tasks) }],
+              currentProjectId: id,
+              selectedId: null,
+            };
+          }),
+
         select: (id) => set({ selectedId: id }),
         toggleTable: () => set((s) => ({ tableCollapsed: !s.tableCollapsed })),
         toggleSide: () => set((s) => ({ sideCollapsed: !s.sideCollapsed })),
@@ -159,31 +252,39 @@ export const useStore = create<State>()(
     },
     {
       name: 'dependency-task',
+      // 保存形式の違いは merge で吸収する。version を上げると zustand が migrate なしで旧データを捨てるので据え置く
       version: 1,
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({
-        tasks: s.tasks,
+        projects: s.projects,
+        currentProjectId: s.currentProjectId,
         labels: s.labels,
         members: s.members,
-        nextNo: s.nextNo,
         tableCollapsed: s.tableCollapsed,
         sideCollapsed: s.sideCollapsed,
       }),
       // 壊れた保存データはサンプルに戻す
       merge: (persisted, current) => {
         try {
-          // ラベル・担当者の導入前の保存データには labels / members がない
-          const p = persisted as { tasks: unknown; labels?: unknown; members?: unknown; nextNo: unknown; tableCollapsed?: unknown; sideCollapsed?: unknown };
+          const p = persisted as Record<string, unknown>;
+          const ui = { tableCollapsed: p.tableCollapsed === true, sideCollapsed: p.sideCollapsed === true };
+          if (Array.isArray(p.projects)) {
+            const ws = parseWorkspaceData({ version: 4, projects: p.projects, labels: p.labels, members: p.members });
+            const currentProjectId = ws.projects.some((x) => x.id === p.currentProjectId)
+              ? (p.currentProjectId as string)
+              : ws.projects[0].id;
+            return { ...current, ...ui, projects: ws.projects, labels: ws.labels, members: ws.members, currentProjectId };
+          }
+          // 複数プロジェクト導入前の保存データ（1 プロジェクト分。labels / members がない版もある）
           const { tasks, labels, members } = parseProjectData({
             version: 3,
             tasks: p.tasks,
             labels: p.labels ?? [],
             members: p.members ?? [],
           });
-          const nextNo = typeof p.nextNo === 'number' ? Math.max(p.nextNo, nextNoOf(tasks)) : nextNoOf(tasks);
-          const tableCollapsed = p.tableCollapsed === true;
-          const sideCollapsed = p.sideCollapsed === true;
-          return { ...current, tasks, labels, members, nextNo, tableCollapsed, sideCollapsed };
+          const nextNo = Math.max(typeof p.nextNo === 'number' ? p.nextNo : 0, nextNoOf(tasks));
+          const project = { id: newId(), name: 'マイプロジェクト', tasks, nextNo };
+          return { ...current, ...ui, projects: [project], labels, members, currentProjectId: project.id };
         } catch {
           return current;
         }

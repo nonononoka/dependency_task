@@ -1,5 +1,5 @@
 import { parseBulk } from './bulk';
-import type { Label, Member, Task } from './types';
+import type { Label, Member, WorkspaceData } from './types';
 
 const SAMPLE_TEXT = `要件定義 [done]
 基本設計 <- 要件定義 [done]
@@ -48,11 +48,16 @@ const SAMPLE_TASK_ASSIGNEE: Record<string, string> = {
   リリース: 'm-sato',
 };
 
-export function sampleData(): { tasks: Task[]; labels: Label[]; members: Member[] } {
+export function sampleWorkspace(): WorkspaceData {
   const tasks = parseBulk(SAMPLE_TEXT, [], 1).tasks.map((t) => ({
     ...t,
     labelId: SAMPLE_TASK_LABEL[t.title] ?? null,
     assigneeId: SAMPLE_TASK_ASSIGNEE[t.title] ?? null,
   }));
-  return { tasks, labels: SAMPLE_LABELS, members: SAMPLE_MEMBERS };
+  return {
+    version: 4,
+    projects: [{ id: 'p-sample', name: 'サンプルプロジェクト', tasks, nextNo: tasks.length + 1 }],
+    labels: SAMPLE_LABELS,
+    members: SAMPLE_MEMBERS,
+  };
 }

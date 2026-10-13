@@ -19,7 +19,7 @@ import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { STATE_LABEL, type DisplayState, type Label, type Member, type Task } from '../domain/types';
 import { filteredOut, relationOf, useDerived } from '../store/derived';
-import { useStore } from '../store/store';
+import { selectTasks, useStore } from '../store/store';
 import { Avatar } from './Avatar';
 import { NODE_WIDTH, layoutTasks } from './layout';
 
@@ -68,6 +68,7 @@ function Graph() {
   const { fitView } = useReactFlow();
   const tableCollapsed = useStore((s) => s.tableCollapsed);
   const sideCollapsed = useStore((s) => s.sideCollapsed);
+  const projectId = useStore((s) => s.currentProjectId);
 
   // タイトルを折り返して全文出すのでノードの高さは内容次第。React Flow が測った高さで配置する
   const [heights, setHeights] = useState<Record<string, number>>({});
@@ -154,11 +155,12 @@ function Graph() {
     return () => cancelAnimationFrame(id);
   }, [tableCollapsed, sideCollapsed, fitView]);
 
-  // タスク数が変わったら、全ノードの高さが測れて配置し直した後に全体を表示し直す
+  // タスク数が変わったら、全ノードの高さが測れて配置し直した後に全体を表示し直す。
+  // プロジェクトを切り替えたときも同様（タスク数が同じでも中身が違う）
   const pendingFit = useRef(true);
   useEffect(() => {
     pendingFit.current = true;
-  }, [tasks.length]);
+  }, [tasks.length, projectId]);
   useEffect(() => {
     if (!pendingFit.current) return;
     if (tasks.every((t) => heights[t.id] !== undefined)) pendingFit.current = false;
@@ -220,7 +222,7 @@ function FilterBanner() {
 }
 
 export function GraphView() {
-  const empty = useStore((s) => s.tasks.length === 0);
+  const empty = useStore((s) => selectTasks(s).length === 0);
   return (
     <section className="graph" aria-label="依存グラフ">
       <ReactFlowProvider>

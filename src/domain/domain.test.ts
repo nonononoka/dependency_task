@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseBulk } from './bulk';
 import { computeStates, cycleIfAdded, downstream, findCycle, upstream } from './graph';
-import { parseProjectData } from './persist';
+import { parseImport, parseProjectData, parseWorkspaceData } from './persist';
 import type { Task } from './types';
 
 const task = (id: string, deps: string[] = [], status: Task['status'] = 'todo'): Task => ({
@@ -120,5 +120,39 @@ describe('parseProjectData', () => {
     expect(() => parseProjectData({ version: 1, tasks: [task('a', ['b']), task('b', ['a'])] })).toThrow('循環');
     expect(() => parseProjectData({ version: 2, tasks: [], labels: [{ id: 'l', name: 'x', color: '#fff' }] })).toThrow('ラベル');
     expect(() => parseProjectData({ version: 3, tasks: [], labels: [], members: [{ id: 1 }] })).toThrow('担当者');
+  });
+});
+
+describe('parseWorkspaceData / parseImport', () => {
+  const ws = {
+    version: 4,
+    labels: [{ id: 'l1', name: 'フロント', color: 'orange' }],
+    members: [{ id: 'm1', name: '佐藤' }],
+    projects: [
+      { id: 'p1', name: 'A', nextNo: 5, tasks: [{ ...task('a'), no: 1, labelId: 'l1', assigneeId: 'm1' }] },
+      { id: 'p2', name: 'B', nextNo: 1, tasks: [{ ...task('x'), no: 3 }, { ...task('y', ['x']), no: 4, labelId: 'gone' }] },
+    ],
+  };
+
+  it('全プロジェクトを読み込み、共通のラベル・担当者を参照できる', () => {
+    const data = parseWorkspaceData(ws);
+    expect(data.projects.map((p) => [p.name, p.tasks.length])).toEqual([['A', 1], ['B', 2]]);
+    expect(data.projects[0].tasks[0]).toMatchObject({ labelId: 'l1', assigneeId: 'm1' });
+    expect(data.projects[1].tasks[1].labelId).toBeNull();
+    // nextNo は保存値とタスク番号の大きいほう
+    expect(data.projects.map((p) => p.nextNo)).toEqual([5, 5]);
+  });
+
+  it('プロジェクトごとに循環や重複を検出し、どのプロジェクトか示す', () => {
+    const bad = { ...ws, projects: [ws.projects[0], { id: 'p2', name: 'B', nextNo: 1, tasks: [task('x', ['y']), task('y', ['x'])] }] };
+    expect(() => parseWorkspaceData(bad)).toThrow('プロジェクト「B」の循環依存');
+    expect(() => parseWorkspaceData({ ...ws, projects: [ws.projects[0], ws.projects[0]] })).toThrow('重複');
+    expect(() => parseWorkspaceData({ ...ws, projects: [] })).toThrow('1 つも');
+  });
+
+  it('version で全プロジェクトのファイルか旧形式（1 プロジェクト分）かを判定する', () => {
+    expect(parseImport(ws).kind).toBe('workspace');
+    expect(parseImport({ version: 3, labels: [], members: [], tasks: [task('a')] }).kind).toBe('project');
+    expect(() => parseImport({ version: 9, tasks: [] })).toThrow('未対応');
   });
 });
