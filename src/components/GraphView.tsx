@@ -12,14 +12,15 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { STATE_LABEL, type DisplayState, type Label, type Task } from '../domain/types';
 import { filteredOut, relationOf, useDerived } from '../store/derived';
 import { useStore } from '../store/store';
-import { NODE_HEIGHT, NODE_WIDTH, layoutTasks } from './layout';
+import { NODE_WIDTH, layoutTasks } from './layout';
 
 type TaskNodeData = {
   task: Task;
@@ -42,9 +43,7 @@ function TaskNode({ data: { task, state, label, relation, filteredOut } }: NodeP
         </span>
         <span className={`badge state-${state}`}>{STATE_LABEL[state]}</span>
       </div>
-      <div className="task-node-title" title={task.title}>
-        {task.title || '(無題)'}
-      </div>
+      <div className="task-node-title">{task.title || '(無題)'}</div>
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -60,12 +59,33 @@ function Graph() {
   const select = useStore((s) => s.select);
   const { fitView } = useReactFlow();
 
-  // タイトルや状態の変更では再レイアウトしない
-  const structureKey = tasks.map((t) => `${t.id}:${t.deps.join(',')}`).join('|');
-  const positions = useMemo(() => layoutTasks(tasks), [structureKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // タイトルを折り返して全文出すのでノードの高さは内容次第。React Flow が測った高さで配置する
+  const [heights, setHeights] = useState<Record<string, number>>({});
+
+  // 依存関係か高さが変わったときだけ再レイアウトする（状態の変更などでは動かさない）
+  const structureKey = tasks.map((t) => `${t.id}:${t.deps.join(',')}:${heights[t.id] ?? ''}`).join('|');
+  const positions = useMemo(() => layoutTasks(tasks, heights), [structureKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [nodes, setNodes, onNodesChange] = useNodesState<TaskNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<TaskNodeType>[]) => {
+      onNodesChange(changes);
+      setHeights((prev) => {
+        let next = prev;
+        for (const c of changes) {
+          if (c.type !== 'dimensions' || !c.dimensions) continue;
+          const h = Math.round(c.dimensions.height);
+          if (prev[c.id] === h) continue;
+          if (next === prev) next = { ...prev };
+          next[c.id] = h;
+        }
+        return next;
+      });
+    },
+    [onNodesChange],
+  );
 
   useEffect(() => {
     setNodes(
@@ -74,7 +94,6 @@ function Graph() {
         type: 'task',
         position: positions.get(t.id) ?? { x: 0, y: 0 },
         width: NODE_WIDTH,
-        height: NODE_HEIGHT,
         data: {
           task: t,
           state: d.states.get(t.id)!,
@@ -111,18 +130,24 @@ function Graph() {
     });
   }, [tasks, positions, d, setNodes, setEdges]);
 
-  // タスク数が変わったら全体を表示し直す
+  // タスク数が変わったら、全ノードの高さが測れて配置し直した後に全体を表示し直す
+  const pendingFit = useRef(true);
   useEffect(() => {
+    pendingFit.current = true;
+  }, [tasks.length]);
+  useEffect(() => {
+    if (!pendingFit.current) return;
+    if (tasks.every((t) => heights[t.id] !== undefined)) pendingFit.current = false;
     const id = requestAnimationFrame(() => fitView({ padding: 0.15, maxZoom: 1.2, duration: 200 }));
     return () => cancelAnimationFrame(id);
-  }, [tasks.length, fitView]);
+  }, [positions, nodes.length, tasks, heights, fitView]);
 
   return (
     <ReactFlow
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
-      onNodesChange={onNodesChange}
+      onNodesChange={handleNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={(c: Connection) => addDep(c.target, c.source)}
       onEdgesDelete={(es) => es.forEach((e) => removeDep(e.target, e.source))}
