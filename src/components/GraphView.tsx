@@ -66,6 +66,8 @@ function Graph() {
   const removeDep = useStore((s) => s.removeDep);
   const select = useStore((s) => s.select);
   const { fitView } = useReactFlow();
+  const tableCollapsed = useStore((s) => s.tableCollapsed);
+  const sideCollapsed = useStore((s) => s.sideCollapsed);
 
   // タイトルを折り返して全文出すのでノードの高さは内容次第。React Flow が測った高さで配置する
   const [heights, setHeights] = useState<Record<string, number>>({});
@@ -138,6 +140,19 @@ function Graph() {
       );
     });
   }, [tasks, positions, d, setNodes, setEdges]);
+
+  // タスク一覧・サイドパネルの折りたたみでグラフの広さが変わったら、レイアウト確定後に全体を表示し直す
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    let id = requestAnimationFrame(() => {
+      id = requestAnimationFrame(() => fitView({ padding: 0.15, maxZoom: 1.2, duration: 200 }));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [tableCollapsed, sideCollapsed, fitView]);
 
   // タスク数が変わったら、全ノードの高さが測れて配置し直した後に全体を表示し直す
   const pendingFit = useRef(true);

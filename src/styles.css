@@ -121,6 +121,7 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background:
 .graph { grid-area: graph; position: relative; min-height: 0; }
 .side {
   grid-area: side;
+  position: relative;
   overflow-y: auto;
   background: var(--panel);
   border-left: 1px solid var(--border);
@@ -131,10 +132,49 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background:
 }
 .table-pane {
   grid-area: table;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--panel);
   border-top: 1px solid var(--border);
 }
+.table-scroll { flex: 1; min-height: 0; overflow: auto; }
+.app.table-collapsed { grid-template-rows: auto minmax(0, 1fr) auto; }
+.app.side-collapsed { grid-template-columns: minmax(0, 1fr) 40px; }
+.side-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+.side-toggle:hover:not(:disabled) { color: var(--text); border-color: var(--border); }
+.side:not(.collapsed) > .side-toggle { position: absolute; top: 10px; right: 10px; }
+.side.collapsed { padding: 10px 6px; align-items: center; overflow: hidden; }
+.side-toggle-text { display: none; }
+.table-bar {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.app.table-collapsed .table-bar { border-bottom: 0; }
+.table-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  padding: 4px 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.table-toggle .muted { font-weight: 400; font-size: 12px; }
+.table-toggle .chevron { display: inline-block; transition: transform 0.15s; color: var(--muted); }
+.table-toggle[aria-expanded='false'] .chevron { transform: rotate(-90deg); }
 
 @media (max-width: 860px) {
   .app {
@@ -144,7 +184,12 @@ code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; background:
     height: auto;
   }
   .side { border-left: 0; border-top: 1px solid var(--border); }
-  .table-pane { overflow-x: auto; }
+  .table-scroll { overflow-x: auto; }
+  .app.side-collapsed { grid-template-columns: minmax(0, 1fr); }
+  .side.collapsed { align-items: stretch; padding: 4px 8px; }
+  .side.collapsed .side-toggle { display: flex; width: auto; gap: 6px; padding: 4px 8px; font-size: 13px; font-weight: 600; }
+  .side.collapsed .side-toggle svg { transform: rotate(-90deg); }
+  .side-toggle-text { display: inline; }
 }
 
 /* 状態の色 */

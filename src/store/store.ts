@@ -20,6 +20,10 @@ interface State {
   labelFilter: string | null;
   /** この担当者のタスクだけを強調する（保存しない）。ラベルと同時に指定すると両方に当てはまるものだけ */
   assigneeFilter: string | null;
+  /** 下のタスク一覧を折りたたんでいるか（保存する） */
+  tableCollapsed: boolean;
+  /** 右のサイドパネルを折りたたんでいるか（保存する） */
+  sideCollapsed: boolean;
   toast: Toast | null;
 
   addTask: (title?: string) => string;
@@ -44,6 +48,8 @@ interface State {
   setAssigneeFilter: (id: string | null) => void;
   replaceAll: (data: Omit<ProjectData, 'version'>) => void;
   select: (id: string | null) => void;
+  toggleTable: () => void;
+  toggleSide: () => void;
   notify: (message: string) => void;
 }
 
@@ -63,6 +69,8 @@ export const useStore = create<State>()(
         selectedId: null,
         labelFilter: null,
         assigneeFilter: null,
+        tableCollapsed: false,
+        sideCollapsed: false,
         toast: null,
 
         addTask: (title = '') => {
@@ -144,6 +152,8 @@ export const useStore = create<State>()(
         replaceAll: ({ tasks, labels, members }) =>
           set({ tasks, labels, members, nextNo: nextNoOf(tasks), selectedId: null, labelFilter: null, assigneeFilter: null }),
         select: (id) => set({ selectedId: id }),
+        toggleTable: () => set((s) => ({ tableCollapsed: !s.tableCollapsed })),
+        toggleSide: () => set((s) => ({ sideCollapsed: !s.sideCollapsed })),
         notify: (message) => set({ toast: { key: Date.now(), message } }),
       };
     },
@@ -151,12 +161,19 @@ export const useStore = create<State>()(
       name: 'dependency-task',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ tasks: s.tasks, labels: s.labels, members: s.members, nextNo: s.nextNo }),
+      partialize: (s) => ({
+        tasks: s.tasks,
+        labels: s.labels,
+        members: s.members,
+        nextNo: s.nextNo,
+        tableCollapsed: s.tableCollapsed,
+        sideCollapsed: s.sideCollapsed,
+      }),
       // 壊れた保存データはサンプルに戻す
       merge: (persisted, current) => {
         try {
           // ラベル・担当者の導入前の保存データには labels / members がない
-          const p = persisted as { tasks: unknown; labels?: unknown; members?: unknown; nextNo: unknown };
+          const p = persisted as { tasks: unknown; labels?: unknown; members?: unknown; nextNo: unknown; tableCollapsed?: unknown; sideCollapsed?: unknown };
           const { tasks, labels, members } = parseProjectData({
             version: 3,
             tasks: p.tasks,
@@ -164,7 +181,9 @@ export const useStore = create<State>()(
             members: p.members ?? [],
           });
           const nextNo = typeof p.nextNo === 'number' ? Math.max(p.nextNo, nextNoOf(tasks)) : nextNoOf(tasks);
-          return { ...current, tasks, labels, members, nextNo };
+          const tableCollapsed = p.tableCollapsed === true;
+          const sideCollapsed = p.sideCollapsed === true;
+          return { ...current, tasks, labels, members, nextNo, tableCollapsed, sideCollapsed };
         } catch {
           return current;
         }

@@ -71,7 +71,53 @@ function Detail({ d }: { d: Derived }) {
   );
 }
 
+function Chevron({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d={dir === 'left' ? 'M10 3 5 8l5 5' : 'M6 3l5 5-5 5'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function SidePanel() {
+  const collapsed = useStore((s) => s.sideCollapsed);
+  const toggleSide = useStore((s) => s.toggleSide);
+
+  if (collapsed) {
+    return (
+      <aside className="side collapsed" aria-label="サイドパネル">
+        <button type="button" className="side-toggle" aria-expanded={false} title="サイドパネルを開く" onClick={toggleSide}>
+          <Chevron dir="left" />
+          <span className="side-toggle-text">サイドパネルを開く</span>
+        </button>
+      </aside>
+    );
+  }
+  return (
+    <aside className="side" aria-label="サイドパネル">
+      <button
+        type="button"
+        className="side-toggle"
+        aria-expanded={true}
+        aria-label="サイドパネルを折りたたむ"
+        title="サイドパネルを折りたたんでグラフを広げる"
+        onClick={toggleSide}
+      >
+        <Chevron dir="right" />
+      </button>
+      <SidePanelContent />
+    </aside>
+  );
+}
+
+function SidePanelContent() {
   const d = useDerived();
   const count = (s: DisplayState) => d.tasks.filter((t) => d.states.get(t.id) === s).length;
   const done = count('done');
@@ -80,7 +126,7 @@ export function SidePanel() {
   const byState = (s: DisplayState) => d.tasks.filter((t) => d.states.get(t.id) === s).map((t) => t.id);
 
   return (
-    <aside className="side">
+    <>
       <section>
         <h2>進捗</h2>
         <div className="progress-num">
@@ -118,6 +164,6 @@ export function SidePanel() {
         <h2>ラベル</h2>
         <LabelManager d={d} />
       </section>
-    </aside>
+    </>
   );
 }

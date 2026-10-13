@@ -13,6 +13,8 @@ export function App() {
   const replaceAll = useStore((s) => s.replaceAll);
   const notify = useStore((s) => s.notify);
   const select = useStore((s) => s.select);
+  const tableCollapsed = useStore((s) => s.tableCollapsed);
+  const sideCollapsed = useStore((s) => s.sideCollapsed);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -51,7 +53,7 @@ export function App() {
   };
 
   return (
-    <div className="app">
+    <div className={`app${tableCollapsed ? ' table-collapsed' : ''}${sideCollapsed ? ' side-collapsed' : ''}`}>
       <header className="header">
         <h1>Dependency Task</h1>
         <div className="header-actions">
