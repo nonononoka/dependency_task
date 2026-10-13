@@ -8,6 +8,8 @@ export function useDerived() {
   const labels = useStore((s) => s.labels);
   const selectedId = useStore((s) => s.selectedId);
   const labelFilter = useStore((s) => s.labelFilter);
+  const members = useStore((s) => s.members);
+  const assigneeFilter = useStore((s) => s.assigneeFilter);
 
   const base = useMemo(
     () => ({
@@ -27,11 +29,12 @@ export function useDerived() {
   );
 
   const labelsById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
+  const membersById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   // effect の依存に使えるよう、同じ入力なら同じオブジェクトを返す
   return useMemo(
-    () => ({ tasks, selectedId, ...base, related, labels, labelsById, labelFilter }),
-    [tasks, selectedId, base, related, labels, labelsById, labelFilter],
+    () => ({ tasks, selectedId, ...base, related, labels, labelsById, labelFilter, members, membersById, assigneeFilter }),
+    [tasks, selectedId, base, related, labels, labelsById, labelFilter, members, membersById, assigneeFilter],
   );
 }
 
@@ -46,9 +49,13 @@ export function relationOf(d: Derived, id: string): 'selected' | 'up' | 'down' |
   return 'dim';
 }
 
-/** ラベルで絞り込み中に、対象外のタスクなら true */
+/** ラベル・担当者で絞り込み中に、対象外のタスクなら true */
 export function filteredOut(d: Derived, id: string): boolean {
-  return d.labelFilter !== null && d.byId.get(id)?.labelId !== d.labelFilter;
+  const t = d.byId.get(id);
+  return (
+    (d.labelFilter !== null && t?.labelId !== d.labelFilter) ||
+    (d.assigneeFilter !== null && t?.assigneeId !== d.assigneeFilter)
+  );
 }
 
 export function taskLabel(t: { no: number; title: string }): string {

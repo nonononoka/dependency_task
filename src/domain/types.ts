@@ -14,6 +14,8 @@ export interface Task {
   status: Status;
   /** ラベル（カテゴリ）。1 タスクにつき 1 つまで */
   labelId: string | null;
+  /** 担当者。1 タスクにつき 1 人まで */
+  assigneeId: string | null;
 }
 
 /** ダークモードでも見分けやすいよう、色は CSS 側で定義したパレットから選ぶ */
@@ -30,10 +32,23 @@ export interface Label {
   color: LabelColor;
 }
 
+export interface Member {
+  id: string;
+  name: string;
+}
+
 export interface ProjectData {
-  version: 2;
+  version: 3;
   tasks: Task[];
   labels: Label[];
+  members: Member[];
+}
+
+/** 担当者アイコンの色。id から決めるので名前を変えても色は変わらない */
+export function memberColor(id: string): LabelColor {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return LABEL_COLORS[h % LABEL_COLORS.length];
 }
 
 export const STATUSES: Status[] = ['todo', 'doing', 'done'];

@@ -5,7 +5,7 @@ import { parseProjectData } from './persist';
 import type { Task } from './types';
 
 const task = (id: string, deps: string[] = [], status: Task['status'] = 'todo'): Task => ({
-  id, no: 0, title: id.toUpperCase(), deps, status, labelId: null,
+  id, no: 0, title: id.toUpperCase(), deps, status, labelId: null, assigneeId: null,
 });
 
 // a ← b ← c, a ← d
@@ -37,16 +37,16 @@ describe('graph', () => {
 describe('parseBulk', () => {
   let n = 0;
   const gen = () => `n${n++}`;
-  const existing: Task[] = [{ id: 'e1', no: 1, title: '設計', deps: [], status: 'done', labelId: null }];
+  const existing: Task[] = [{ id: 'e1', no: 1, title: '設計', deps: [], status: 'done', labelId: null, assigneeId: null }];
 
   it('タイトル・依存先・状態を解析する', () => {
     n = 0;
     const r = parseBulk('実装 <- 設計, テスト準備 [doing]\nテスト準備\nリリース <- #1、実装', existing, 2, gen);
     expect(r.errors).toEqual([]);
     expect(r.tasks).toEqual([
-      { id: 'n0', no: 2, title: '実装', deps: ['e1', 'n1'], status: 'doing', labelId: null },
-      { id: 'n1', no: 3, title: 'テスト準備', deps: [], status: 'todo', labelId: null },
-      { id: 'n2', no: 4, title: 'リリース', deps: ['e1', 'n0'], status: 'todo', labelId: null },
+      { id: 'n0', no: 2, title: '実装', deps: ['e1', 'n1'], status: 'doing', labelId: null, assigneeId: null },
+      { id: 'n1', no: 3, title: 'テスト準備', deps: [], status: 'todo', labelId: null, assigneeId: null },
+      { id: 'n2', no: 4, title: 'リリース', deps: ['e1', 'n0'], status: 'todo', labelId: null, assigneeId: null },
     ]);
   });
 
@@ -56,6 +56,20 @@ describe('parseBulk', () => {
     const r = parseBulk('A <- B\nB <- A', existing, 2, gen);
     expect(r.tasks).toEqual([]);
     expect(r.errors[0].message).toContain('循環');
+  });
+
+  it('@担当者 を既存の担当者に紐づけ、新しい名前は担当者として作る', () => {
+    n = 0;
+    const members = [{ id: 'm1', name: '佐藤' }];
+    const r = parseBulk('設計レビュー @佐藤 <- 設計\n実装 @鈴木 [doing]\nメール a@b.com 確認\nテスト @鈴木', existing, 2, gen, members);
+    expect(r.errors).toEqual([]);
+    expect(r.members).toEqual([{ id: 'n1', name: '鈴木' }]);
+    expect(r.tasks.map((t) => [t.title, t.assigneeId, t.deps, t.status])).toEqual([
+      ['設計レビュー', 'm1', ['e1'], 'todo'],
+      ['実装', 'n1', [], 'doing'],
+      ['メール a@b.com 確認', null, [], 'todo'],
+      ['テスト', 'n1', [], 'todo'],
+    ]);
   });
 
   it('既存に同名タスクが複数あると #番号 を求める', () => {
@@ -70,9 +84,23 @@ describe('parseProjectData', () => {
     expect(data.tasks[0].deps).toEqual(['b']);
   });
 
-  it('version 1（ラベルなし）を version 2 に移行する', () => {
-    const { labelId: _, ...old } = task('a');
-    expect(parseProjectData({ version: 1, tasks: [old] })).toEqual({ version: 2, labels: [], tasks: [task('a')] });
+  it('古い版（v1: ラベルなし、v2: 担当者なし）を最新版に移行する', () => {
+    const { labelId: _l, assigneeId: _a, ...v1 } = task('a');
+    expect(parseProjectData({ version: 1, tasks: [v1] })).toEqual({ version: 3, labels: [], members: [], tasks: [task('a')] });
+    const { assigneeId: _, ...v2 } = task('a');
+    expect(parseProjectData({ version: 2, labels: [], tasks: [v2] })).toEqual({ version: 3, labels: [], members: [], tasks: [task('a')] });
+  });
+
+  it('担当者を読み込み、存在しない担当者はタスクから外す', () => {
+    const members = [{ id: 'm1', name: '佐藤' }];
+    const data = parseProjectData({
+      version: 3,
+      labels: [],
+      members,
+      tasks: [{ ...task('a'), assigneeId: 'm1' }, { ...task('b'), assigneeId: 'gone' }],
+    });
+    expect(data.members).toEqual(members);
+    expect(data.tasks.map((t) => t.assigneeId)).toEqual(['m1', null]);
   });
 
   it('ラベルを読み込み、存在しないラベルはタスクから外す', () => {
@@ -91,5 +119,6 @@ describe('parseProjectData', () => {
     expect(() => parseProjectData({ version: 1, tasks: [{ id: 1 }] })).toThrow('1 件目');
     expect(() => parseProjectData({ version: 1, tasks: [task('a', ['b']), task('b', ['a'])] })).toThrow('循環');
     expect(() => parseProjectData({ version: 2, tasks: [], labels: [{ id: 'l', name: 'x', color: '#fff' }] })).toThrow('ラベル');
+    expect(() => parseProjectData({ version: 3, tasks: [], labels: [], members: [{ id: 1 }] })).toThrow('担当者');
   });
 });

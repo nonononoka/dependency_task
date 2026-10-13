@@ -3,19 +3,18 @@ import { downstream } from '../domain/graph';
 import type { Task } from '../domain/types';
 import { taskLabel, type Derived } from '../store/derived';
 import { useStore } from '../store/store';
-
-const MENU_MAX_HEIGHT = 280;
+import { useAnchoredMenu, useScrollActiveIntoView } from './menu';
 
 /** 依存先のタグ入力。候補は #番号 かタイトルで絞り込む */
 export function DepInput({ task, d }: { task: Task; d: Derived }) {
   const addDep = useStore((s) => s.addDep);
   const removeDep = useStore((s) => s.removeDep);
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const [rect, setRect] = useState<DOMRect | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
+  const menu = useAnchoredMenu(inputRef);
+  const { open, show } = menu;
 
   const candidates = useMemo(() => {
     if (!open) return [];
@@ -28,28 +27,7 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
   }, [open, query, d.tasks, task]);
 
   useEffect(() => setActive(0), [query]);
-
-  // キーボードで選んだ候補が見えるようにスクロールする
-  useEffect(() => {
-    menuRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
-  }, [active]);
-
-  // 候補リストは position: fixed なので、スクロールやリサイズに合わせて位置を追従させる
-  useEffect(() => {
-    if (!open) return;
-    const reposition = () => setRect(inputRef.current?.getBoundingClientRect() ?? null);
-    window.addEventListener('scroll', reposition, true);
-    window.addEventListener('resize', reposition);
-    return () => {
-      window.removeEventListener('scroll', reposition, true);
-      window.removeEventListener('resize', reposition);
-    };
-  }, [open]);
-
-  const show = () => {
-    setRect(inputRef.current?.getBoundingClientRect() ?? null);
-    setOpen(true);
-  };
+  useScrollActiveIntoView(menuRef, active);
 
   const choose = (t: Task) => {
     if (addDep(task.id, t.id)) setQuery('');
@@ -70,7 +48,7 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
       e.preventDefault();
       if (enabled[active]) choose(enabled[active].task);
     } else if (e.key === 'Escape') {
-      setOpen(false);
+      menu.hide();
     } else if (e.key === 'Backspace' && query === '' && task.deps.length) {
       removeDep(task.id, task.deps[task.deps.length - 1]);
     }
@@ -108,15 +86,15 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
           show();
         }}
         onFocus={show}
-        onBlur={() => setOpen(false)}
+        onBlur={menu.hide}
         onKeyDown={onKeyDown}
         aria-label={`${taskLabel(task)} の依存先`}
       />
-      {open && rect && (
+      {open && (
         <ul
           ref={menuRef}
           className="dep-menu"
-          style={menuPosition(rect)}
+          style={menu.style}
           role="listbox"
           // スクロールバーを掴んでも入力欄のフォーカスを外さない（外れるとリストが閉じる）
           onMouseDown={(e) => e.preventDefault()}
@@ -142,13 +120,3 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
   );
 }
 
-/** 入力欄の下に出し、下に入りきらなければ上に出す。高さは画面内に収める */
-function menuPosition(rect: DOMRect): React.CSSProperties {
-  const margin = 8;
-  const below = window.innerHeight - rect.bottom - margin;
-  const above = rect.top - margin;
-  if (below >= Math.min(MENU_MAX_HEIGHT, 160) || below >= above) {
-    return { top: rect.bottom + 4, left: rect.left, maxHeight: Math.min(MENU_MAX_HEIGHT, below - 4) };
-  }
-  return { bottom: window.innerHeight - rect.top + 4, left: rect.left, maxHeight: Math.min(MENU_MAX_HEIGHT, above - 4) };
-}

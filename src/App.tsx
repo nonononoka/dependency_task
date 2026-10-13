@@ -25,8 +25,7 @@ export function App() {
   }, [select]);
 
   const exportJson = () => {
-    const { tasks, labels } = useStore.getState();
-    const json = JSON.stringify(toProjectData(tasks, labels), null, 2);
+    const json = JSON.stringify(toProjectData(useStore.getState()), null, 2);
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
@@ -37,9 +36,10 @@ export function App() {
 
   const importJson = async (file: File) => {
     try {
-      const { tasks, labels } = parseProjectData(JSON.parse(await file.text()));
+      const data = parseProjectData(JSON.parse(await file.text()));
+      const { tasks } = data;
       if (useStore.getState().tasks.length && !confirm(`現在のタスクを「${file.name}」の内容（${tasks.length} 件）で置き換えます。よろしいですか？`)) return;
-      replaceAll(tasks, labels);
+      replaceAll(data);
       notify(`${tasks.length} 件のタスクを読み込みました`);
     } catch (e) {
       notify(`読み込めませんでした: ${e instanceof SyntaxError ? 'JSON として解析できません' : (e as Error).message}`);
@@ -47,7 +47,7 @@ export function App() {
   };
 
   const clearAll = () => {
-    if (confirm('すべてのタスクを削除します。よろしいですか？（先に書き出しておくと復元できます）')) replaceAll([], useStore.getState().labels);
+    if (confirm('すべてのタスクを削除します（ラベルと担当者は残ります）。よろしいですか？（先に書き出しておくと復元できます）')) replaceAll({ ...useStore.getState(), tasks: [] });
   };
 
   return (

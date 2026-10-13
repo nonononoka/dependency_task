@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { cycleIfAdded, formatCycle } from '../domain/graph';
 import { nextLabelColor, nextNoOf, parseProjectData } from '../domain/persist';
 import { sampleData } from '../domain/sample';
-import { newId, type Label, type Status, type Task } from '../domain/types';
+import { newId, type Label, type Member, type ProjectData, type Status, type Task } from '../domain/types';
 
 interface Toast {
   key: number;
@@ -13,14 +13,17 @@ interface Toast {
 interface State {
   tasks: Task[];
   labels: Label[];
+  members: Member[];
   nextNo: number;
   selectedId: string | null;
   /** このラベルのタスクだけを強調する（保存しない） */
   labelFilter: string | null;
+  /** この担当者のタスクだけを強調する（保存しない）。ラベルと同時に指定すると両方に当てはまるものだけ */
+  assigneeFilter: string | null;
   toast: Toast | null;
 
   addTask: (title?: string) => string;
-  addTasks: (tasks: Task[]) => void;
+  addTasks: (tasks: Task[], members?: Member[]) => void;
   updateTitle: (id: string, title: string) => void;
   setStatus: (id: string, status: Status) => void;
   removeTask: (id: string) => void;
@@ -32,7 +35,14 @@ interface State {
   updateLabel: (id: string, patch: Partial<Omit<Label, 'id'>>) => void;
   removeLabel: (id: string) => void;
   setLabelFilter: (id: string | null) => void;
-  replaceAll: (tasks: Task[], labels: Label[]) => void;
+  setAssignee: (taskId: string, memberId: string | null) => void;
+  /** 名前で担当者を付ける。同名の担当者がいなければ作る */
+  assignByName: (taskId: string, name: string) => void;
+  addMember: (name?: string) => string;
+  renameMember: (id: string, name: string) => void;
+  removeMember: (id: string) => void;
+  setAssigneeFilter: (id: string | null) => void;
+  replaceAll: (data: Omit<ProjectData, 'version'>) => void;
   select: (id: string | null) => void;
   notify: (message: string) => void;
 }
@@ -48,21 +58,27 @@ export const useStore = create<State>()(
       return {
         tasks: initial.tasks,
         labels: initial.labels,
+        members: initial.members,
         nextNo: nextNoOf(initial.tasks),
         selectedId: null,
         labelFilter: null,
+        assigneeFilter: null,
         toast: null,
 
         addTask: (title = '') => {
           const id = newId();
           set((s) => ({
-            tasks: [...s.tasks, { id, no: s.nextNo, title, deps: [], status: 'todo', labelId: null }],
+            tasks: [...s.tasks, { id, no: s.nextNo, title, deps: [], status: 'todo', labelId: null, assigneeId: null }],
             nextNo: s.nextNo + 1,
           }));
           return id;
         },
-        addTasks: (tasks) =>
-          set((s) => ({ tasks: [...s.tasks, ...tasks], nextNo: Math.max(s.nextNo, nextNoOf(tasks)) })),
+        addTasks: (tasks, members = []) =>
+          set((s) => ({
+            tasks: [...s.tasks, ...tasks],
+            members: [...s.members, ...members],
+            nextNo: Math.max(s.nextNo, nextNoOf(tasks)),
+          })),
         updateTitle: (id, title) => patch(id, (t) => ({ ...t, title })),
         setStatus: (id, status) => patch(id, (t) => ({ ...t, status })),
         removeTask: (id) =>
@@ -105,7 +121,28 @@ export const useStore = create<State>()(
             labelFilter: s.labelFilter === id ? null : s.labelFilter,
           })),
         setLabelFilter: (id) => set({ labelFilter: id }),
-        replaceAll: (tasks, labels) => set({ tasks, labels, nextNo: nextNoOf(tasks), selectedId: null, labelFilter: null }),
+        setAssignee: (taskId, memberId) => patch(taskId, (t) => ({ ...t, assigneeId: memberId })),
+        assignByName: (taskId, rawName) => {
+          const name = rawName.trim();
+          if (!name) return get().setAssignee(taskId, null);
+          const found = get().members.find((m) => m.name === name);
+          get().setAssignee(taskId, found ? found.id : get().addMember(name));
+        },
+        addMember: (name = '') => {
+          const id = newId();
+          set((s) => ({ members: [...s.members, { id, name }] }));
+          return id;
+        },
+        renameMember: (id, name) => set((s) => ({ members: s.members.map((m) => (m.id === id ? { ...m, name } : m)) })),
+        removeMember: (id) =>
+          set((s) => ({
+            members: s.members.filter((m) => m.id !== id),
+            tasks: s.tasks.map((t) => (t.assigneeId === id ? { ...t, assigneeId: null } : t)),
+            assigneeFilter: s.assigneeFilter === id ? null : s.assigneeFilter,
+          })),
+        setAssigneeFilter: (id) => set({ assigneeFilter: id }),
+        replaceAll: ({ tasks, labels, members }) =>
+          set({ tasks, labels, members, nextNo: nextNoOf(tasks), selectedId: null, labelFilter: null, assigneeFilter: null }),
         select: (id) => set({ selectedId: id }),
         notify: (message) => set({ toast: { key: Date.now(), message } }),
       };
@@ -114,15 +151,20 @@ export const useStore = create<State>()(
       name: 'dependency-task',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ tasks: s.tasks, labels: s.labels, nextNo: s.nextNo }),
+      partialize: (s) => ({ tasks: s.tasks, labels: s.labels, members: s.members, nextNo: s.nextNo }),
       // 壊れた保存データはサンプルに戻す
       merge: (persisted, current) => {
         try {
-          // ラベル導入前の保存データには labels がない
-          const p = persisted as { tasks: unknown; labels?: unknown; nextNo: unknown };
-          const { tasks, labels } = parseProjectData({ version: 2, tasks: p.tasks, labels: p.labels ?? [] });
+          // ラベル・担当者の導入前の保存データには labels / members がない
+          const p = persisted as { tasks: unknown; labels?: unknown; members?: unknown; nextNo: unknown };
+          const { tasks, labels, members } = parseProjectData({
+            version: 3,
+            tasks: p.tasks,
+            labels: p.labels ?? [],
+            members: p.members ?? [],
+          });
           const nextNo = typeof p.nextNo === 'number' ? Math.max(p.nextNo, nextNoOf(tasks)) : nextNoOf(tasks);
-          return { ...current, tasks, labels, nextNo };
+          return { ...current, tasks, labels, members, nextNo };
         } catch {
           return current;
         }

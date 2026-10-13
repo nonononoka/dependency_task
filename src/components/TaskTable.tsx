@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { STATE_LABEL, STATUSES, STATUS_LABEL, type Status, type Task } from '../domain/types';
 import { filteredOut, relationOf, taskLabel, useDerived } from '../store/derived';
 import { useStore } from '../store/store';
+import { AssigneeInput } from './AssigneeInput';
 import { DepInput } from './DepInput';
 
 export function TaskTable() {
@@ -47,6 +48,7 @@ export function TaskTable() {
             <th className="col-no">#</th>
             <th className="col-title">タイトル</th>
             <th className="col-deps">依存先</th>
+            <th className="col-assignee">担当者</th>
             <th className="col-label">ラベル</th>
             <th className="col-status">状態</th>
             <th className="col-state">表示</th>
@@ -87,6 +89,9 @@ export function TaskTable() {
                 </td>
                 <td className="col-deps">
                   <DepInput task={t} d={d} />
+                </td>
+                <td className="col-assignee">
+                  <AssigneeInput task={t} d={d} />
                 </td>
                 <td className="col-label">
                   <div className="label-select">

@@ -1,5 +1,5 @@
 import { findCycle, formatCycle } from './graph';
-import { newId, type Status, type Task } from './types';
+import { newId, type Member, type Status, type Task } from './types';
 
 export interface LineError {
   line: number;
@@ -8,6 +8,8 @@ export interface LineError {
 
 export interface BulkResult {
   tasks: Task[];
+  /** 入力で初めて出てきた担当者（既存にない名前） */
+  members: Member[];
   errors: LineError[];
 }
 
@@ -19,24 +21,49 @@ const STATUS_ALIASES: Record<string, Status> = {
 
 /**
  * 一括追加テキストを解析する。書式は 1 行 1 タスク:
- *   タイトル <- 依存先, 依存先 [状態]
+ *   タイトル @担当者 <- 依存先, 依存先 [状態]
  * 依存先は同じ入力内のタイトル、既存タスクのタイトル、または #番号。
+ * 担当者は既存の名前と一致すればそれを使い、なければ新しく作る。
  * エラーが 1 つでもあれば tasks は空で返す（部分的には追加しない）。
  */
-export function parseBulk(text: string, existing: Task[], nextNo: number, genId: () => string = newId): BulkResult {
+export function parseBulk(
+  text: string,
+  existing: Task[],
+  nextNo: number,
+  genId: () => string = newId,
+  existingMembers: Member[] = [],
+): BulkResult {
   const errors: LineError[] = [];
+  const membersByName = new Map(existingMembers.map((m) => [m.name, m]));
+  const newMembers: Member[] = [];
+  const memberOf = (name: string) => {
+    let m = membersByName.get(name);
+    if (!m) {
+      m = { id: genId(), name };
+      membersByName.set(name, m);
+      newMembers.push(m);
+    }
+    return m.id;
+  };
   const entries: { line: number; refs: string[]; task: Task }[] = [];
 
   text.split('\n').forEach((raw, i) => {
     const s = raw.trim();
     if (!s) return;
     let status: Status = 'todo';
-    const rest = s.replace(/\s*\[\s*([^\]]*?)\s*\]\s*$/, (m, key: string) => {
-      const st = STATUS_ALIASES[key.toLowerCase()];
-      if (!st) return m;
-      status = st;
-      return '';
-    });
+    let assignee: string | null = null;
+    const rest = s
+      .replace(/\s*\[\s*([^\]]*?)\s*\]\s*$/, (m, key: string) => {
+        const st = STATUS_ALIASES[key.toLowerCase()];
+        if (!st) return m;
+        status = st;
+        return '';
+      })
+      // 直前が空白の @名前 だけを担当者とみなす（メールアドレスなどを拾わない）
+      .replace(/(^|\s)@([^\s,、\[\]]+)/, (_, sp: string, name: string) => {
+        assignee = name;
+        return sp;
+      });
     const arrow = rest.indexOf('<-');
     const title = (arrow >= 0 ? rest.slice(0, arrow) : rest).trim();
     const refs = arrow >= 0 ? rest.slice(arrow + 2).split(/[,、]/).map((r) => r.trim()).filter(Boolean) : [];
@@ -44,7 +71,12 @@ export function parseBulk(text: string, existing: Task[], nextNo: number, genId:
       errors.push({ line: i + 1, message: 'タイトルが空です' });
       return;
     }
-    entries.push({ line: i + 1, refs, task: { id: genId(), no: nextNo + entries.length, title, deps: [], status, labelId: null } });
+    const assigneeId = assignee ? memberOf(assignee) : null;
+    entries.push({
+      line: i + 1,
+      refs,
+      task: { id: genId(), no: nextNo + entries.length, title, deps: [], status, labelId: null, assigneeId },
+    });
   });
 
   const newByTitle = new Map<string, Task>();
@@ -87,5 +119,5 @@ export function parseBulk(text: string, existing: Task[], nextNo: number, genId:
     }
   }
   errors.sort((a, b) => a.line - b.line);
-  return errors.length ? { tasks: [], errors } : { tasks, errors };
+  return errors.length ? { tasks: [], members: [], errors } : { tasks, members: newMembers, errors };
 }

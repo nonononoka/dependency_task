@@ -17,21 +17,23 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { STATE_LABEL, type DisplayState, type Label, type Task } from '../domain/types';
+import { STATE_LABEL, type DisplayState, type Label, type Member, type Task } from '../domain/types';
 import { filteredOut, relationOf, useDerived } from '../store/derived';
 import { useStore } from '../store/store';
+import { Avatar } from './Avatar';
 import { NODE_WIDTH, layoutTasks } from './layout';
 
 type TaskNodeData = {
   task: Task;
   state: DisplayState;
   label: Label | undefined;
+  assignee: Member | undefined;
   relation: ReturnType<typeof relationOf>;
   filteredOut: boolean;
 };
 type TaskNodeType = Node<TaskNodeData, 'task'>;
 
-function TaskNode({ data: { task, state, label, relation, filteredOut } }: NodeProps<TaskNodeType>) {
+function TaskNode({ data: { task, state, label, assignee, relation, filteredOut } }: NodeProps<TaskNodeType>) {
   const cls = ['task-node', `state-${state}`, relation && `rel-${relation}`, filteredOut && 'filtered-out', label && `label-${label.color}`];
   return (
     <div className={cls.filter(Boolean).join(' ')}>
@@ -44,6 +46,12 @@ function TaskNode({ data: { task, state, label, relation, filteredOut } }: NodeP
         <span className={`badge state-${state}`}>{STATE_LABEL[state]}</span>
       </div>
       <div className="task-node-title">{task.title || '(無題)'}</div>
+      {assignee && (
+        <div className="task-node-assignee">
+          <Avatar member={assignee} />
+          <span>{assignee.name || '(無名)'}</span>
+        </div>
+      )}
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -98,6 +106,7 @@ function Graph() {
           task: t,
           state: d.states.get(t.id)!,
           label: t.labelId ? d.labelsById.get(t.labelId) : undefined,
+          assignee: t.assigneeId ? d.membersById.get(t.assigneeId) : undefined,
           relation: relationOf(d, t.id),
           filteredOut: filteredOut(d, t.id),
         },
@@ -167,15 +176,30 @@ function Graph() {
 
 function FilterBanner() {
   const label = useStore((s) => s.labels.find((l) => l.id === s.labelFilter));
+  const member = useStore((s) => s.members.find((m) => m.id === s.assigneeFilter));
   const setLabelFilter = useStore((s) => s.setLabelFilter);
-  if (!label) return null;
+  const setAssigneeFilter = useStore((s) => s.setAssigneeFilter);
+  if (!label && !member) return null;
   return (
-    <div className="filter-banner">
-      <span className={`dot label-${label.color}`} />
-      「{label.name || '(無名)'}」で絞り込み中
-      <button type="button" aria-label="絞り込みを解除" onClick={() => setLabelFilter(null)}>
-        ×
-      </button>
+    <div className="filter-banners">
+      {label && (
+        <div className="filter-banner">
+          <span className={`dot label-${label.color}`} />
+          ラベル「{label.name || '(無名)'}」で絞り込み中
+          <button type="button" aria-label="ラベルの絞り込みを解除" onClick={() => setLabelFilter(null)}>
+            ×
+          </button>
+        </div>
+      )}
+      {member && (
+        <div className="filter-banner">
+          <Avatar member={member} />
+          担当者「{member.name || '(無名)'}」で絞り込み中
+          <button type="button" aria-label="担当者の絞り込みを解除" onClick={() => setAssigneeFilter(null)}>
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { STATE_LABEL, STATUSES, STATUS_LABEL, type DisplayState } from '../domain/types';
 import { taskLabel, useDerived, type Derived } from '../store/derived';
 import { useStore } from '../store/store';
+import { Avatar } from './Avatar';
 import { LabelManager } from './LabelManager';
+import { MemberManager } from './MemberManager';
 
 function TaskList({ ids, d, empty }: { ids: string[]; d: Derived; empty: string }) {
   const select = useStore((s) => s.select);
@@ -31,6 +33,7 @@ function Detail({ d }: { d: Derived }) {
   }
   const state = d.states.get(t.id)!;
   const label = t.labelId ? d.labelsById.get(t.labelId) : undefined;
+  const assignee = t.assigneeId ? d.membersById.get(t.assigneeId) : undefined;
   return (
     <div className="detail">
       <div className="detail-head">
@@ -40,6 +43,12 @@ function Detail({ d }: { d: Derived }) {
           <span className="detail-label">
             <span className={`dot label-${label.color}`} />
             {label.name || '(無名)'}
+          </span>
+        )}
+        {assignee && (
+          <span className="detail-label">
+            <Avatar member={assignee} />
+            {assignee.name || '(無名)'}
           </span>
         )}
       </div>
@@ -90,10 +99,6 @@ export function SidePanel() {
         </ul>
       </section>
       <section>
-        <h2>ラベル</h2>
-        <LabelManager d={d} />
-      </section>
-      <section>
         <h2>選択中のタスク</h2>
         <Detail d={d} />
       </section>
@@ -104,6 +109,14 @@ export function SidePanel() {
       <section>
         <h2>進行中</h2>
         <TaskList ids={byState('doing')} d={d} empty="進行中のタスクはありません" />
+      </section>
+      <section>
+        <h2>担当者</h2>
+        <MemberManager d={d} />
+      </section>
+      <section>
+        <h2>ラベル</h2>
+        <LabelManager d={d} />
       </section>
     </aside>
   );

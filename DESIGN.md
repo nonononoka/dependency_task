@@ -34,16 +34,20 @@ type Task = {
   deps: string[]; // 依存先タスクの id
   status: Status;
   labelId: string | null; // ラベル（カテゴリ）。1 タスクにつき 1 つまで
+  assigneeId: string | null; // 担当者。1 タスクにつき 1 人まで
 };
 
 type LabelColor = 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'blue' | 'purple' | 'pink';
 type Label = { id: string; name: string; color: LabelColor };
 
-type ProjectData = { version: 2; tasks: Task[]; labels: Label[] };
+type Member = { id: string; name: string };
+
+type ProjectData = { version: 3; tasks: Task[]; labels: Label[]; members: Member[] };
 ```
 
 - `version` はデータ形式の版。項目追加時に旧データを移行するために使う
   - version 1 → 2: ラベルを追加。v1 のデータは `labels: []`、各タスク `labelId: null` として読み込む
+  - version 2 → 3: 担当者を追加。v2 以前のデータは `members: []`、各タスク `assigneeId: null` として読み込む
 - ラベルの色は任意の色ではなくパレットのキーで持つ。ライト/ダークで CSS 側の色を切り替えられるようにするため
 - localStorage に自動保存し、JSON ファイルで読み込み・書き出しできる
 
@@ -66,7 +70,15 @@ type ProjectData = { version: 2; tasks: Task[]; labels: Label[] };
 - 状態: ノードの枠線とバッジの色
 - ラベル: ノード左の太い帯の色（ラベルなしは状態色のまま）
 - ラベルで絞り込むと、そのラベル以外のタスクをグラフ・表で薄く表示する（絞り込み状態は保存しない）
-- 「すべて削除」はタスクだけを消し、ラベルは残す
+- 「すべて削除」はタスクだけを消し、ラベルと担当者は残す
+
+## 担当者
+
+- 表の「担当者」欄で入力する。既存の担当者を候補から選ぶか、新しい名前を入れて確定（Enter / 欄を離れる）するとその場で担当者を作る。空にして確定すると担当者なし。Esc で取り消し
+- 担当者はサイドパネルで名前変更・削除できる。削除すると担当していたタスクは担当者なしになる
+- グラフのノード下部に頭文字アイコンと名前を出す。アイコンの色は担当者 id から決まり、名前を変えても変わらない
+- 担当者でも絞り込める。ラベルの絞り込みと同時に使うと、両方に当てはまるタスクだけを強調する
+- 一括追加では `タイトル @担当者 <- 依存先` で指定できる。直前が空白の `@名前` だけを担当者とみなす（メールアドレスなどを拾わないため）
 
 ## 画面構成
 
@@ -109,10 +121,11 @@ src/
 
 **追加済み**
 - ラベル（カテゴリ）による色分けと絞り込み
+- 担当者の割り当てと絞り込み
 
 **第2段階以降**
 - 共有 URL（データを圧縮して URL に埋め込む）
-- 担当者・期限・見積もり
+- 期限・見積もり
 - クリティカルパス
 - 画像（SVG / PNG）書き出し
 - ガントチャート表示
