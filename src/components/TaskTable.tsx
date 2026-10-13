@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { STATE_LABEL, STATUSES, STATUS_LABEL, type Status, type Task } from '../domain/types';
-import { relationOf, taskLabel, useDerived } from '../store/derived';
+import { filteredOut, relationOf, taskLabel, useDerived } from '../store/derived';
 import { useStore } from '../store/store';
 import { DepInput } from './DepInput';
 
@@ -9,6 +9,7 @@ export function TaskTable() {
   const addTask = useStore((s) => s.addTask);
   const updateTitle = useStore((s) => s.updateTitle);
   const setStatus = useStore((s) => s.setStatus);
+  const setTaskLabel = useStore((s) => s.setTaskLabel);
   const removeTask = useStore((s) => s.removeTask);
   const select = useStore((s) => s.select);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function TaskTable() {
             <th className="col-no">#</th>
             <th className="col-title">タイトル</th>
             <th className="col-deps">依存先</th>
+            <th className="col-label">ラベル</th>
             <th className="col-status">状態</th>
             <th className="col-state">表示</th>
             <th className="col-actions" aria-label="操作" />
@@ -55,6 +57,8 @@ export function TaskTable() {
           {d.tasks.map((t) => {
             const state = d.states.get(t.id)!;
             const rel = relationOf(d, t.id);
+            const label = t.labelId ? d.labelsById.get(t.labelId) : undefined;
+            const rowCls = [rel && `rel-${rel}`, filteredOut(d, t.id) && 'filtered-out'].filter(Boolean).join(' ');
             return (
               <tr
                 key={t.id}
@@ -62,7 +66,7 @@ export function TaskTable() {
                   if (el) rowRefs.current.set(t.id, el);
                   else rowRefs.current.delete(t.id);
                 }}
-                className={rel ? `rel-${rel}` : ''}
+                className={rowCls}
                 onClick={() => select(t.id)}
               >
                 <td className="col-no">#{t.no}</td>
@@ -83,6 +87,23 @@ export function TaskTable() {
                 </td>
                 <td className="col-deps">
                   <DepInput task={t} d={d} />
+                </td>
+                <td className="col-label">
+                  <div className="label-select">
+                    <span className={`dot ${label ? `label-${label.color}` : 'label-none'}`} />
+                    <select
+                      value={t.labelId ?? ''}
+                      aria-label={`#${t.no} のラベル`}
+                      onChange={(e) => setTaskLabel(t.id, e.target.value || null)}
+                    >
+                      <option value="">なし</option>
+                      {d.labels.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name || '(無名)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </td>
                 <td className="col-status">
                   <select

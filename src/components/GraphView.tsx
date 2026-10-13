@@ -16,20 +16,30 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useEffect, useMemo } from 'react';
-import { STATE_LABEL, type DisplayState, type Task } from '../domain/types';
-import { relationOf, useDerived } from '../store/derived';
+import { STATE_LABEL, type DisplayState, type Label, type Task } from '../domain/types';
+import { filteredOut, relationOf, useDerived } from '../store/derived';
 import { useStore } from '../store/store';
 import { NODE_HEIGHT, NODE_WIDTH, layoutTasks } from './layout';
 
-type TaskNodeData = { task: Task; state: DisplayState; relation: ReturnType<typeof relationOf> };
+type TaskNodeData = {
+  task: Task;
+  state: DisplayState;
+  label: Label | undefined;
+  relation: ReturnType<typeof relationOf>;
+  filteredOut: boolean;
+};
 type TaskNodeType = Node<TaskNodeData, 'task'>;
 
-function TaskNode({ data: { task, state, relation } }: NodeProps<TaskNodeType>) {
+function TaskNode({ data: { task, state, label, relation, filteredOut } }: NodeProps<TaskNodeType>) {
+  const cls = ['task-node', `state-${state}`, relation && `rel-${relation}`, filteredOut && 'filtered-out', label && `label-${label.color}`];
   return (
-    <div className={`task-node state-${state}${relation ? ` rel-${relation}` : ''}`}>
+    <div className={cls.filter(Boolean).join(' ')}>
       <Handle type="target" position={Position.Left} />
       <div className="task-node-head">
-        <span className="task-no">#{task.no}</span>
+        <span className="task-no">
+          #{task.no}
+          {label && <span className="task-node-label"> · {label.name || '(無名)'}</span>}
+        </span>
         <span className={`badge state-${state}`}>{STATE_LABEL[state]}</span>
       </div>
       <div className="task-node-title" title={task.title}>
@@ -65,7 +75,13 @@ function Graph() {
         position: positions.get(t.id) ?? { x: 0, y: 0 },
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
-        data: { task: t, state: d.states.get(t.id)!, relation: relationOf(d, t.id) },
+        data: {
+          task: t,
+          state: d.states.get(t.id)!,
+          label: t.labelId ? d.labelsById.get(t.labelId) : undefined,
+          relation: relationOf(d, t.id),
+          filteredOut: filteredOut(d, t.id),
+        },
         draggable: false,
         selectable: false,
         deletable: false,
@@ -80,7 +96,8 @@ function Graph() {
           const onPath =
             (from === 'up' && (to === 'up' || to === 'selected')) ||
             (to === 'down' && (from === 'down' || from === 'selected'));
-          const cls = !d.related ? '' : onPath ? 'hl' : 'dim';
+          const outside = filteredOut(d, dep) || filteredOut(d, t.id);
+          const cls = d.related ? (onPath ? 'hl' : 'dim') : outside ? 'dim' : '';
           return {
             id,
             source: dep,
@@ -123,6 +140,21 @@ function Graph() {
   );
 }
 
+function FilterBanner() {
+  const label = useStore((s) => s.labels.find((l) => l.id === s.labelFilter));
+  const setLabelFilter = useStore((s) => s.setLabelFilter);
+  if (!label) return null;
+  return (
+    <div className="filter-banner">
+      <span className={`dot label-${label.color}`} />
+      「{label.name || '(無名)'}」で絞り込み中
+      <button type="button" aria-label="絞り込みを解除" onClick={() => setLabelFilter(null)}>
+        ×
+      </button>
+    </div>
+  );
+}
+
 export function GraphView() {
   const empty = useStore((s) => s.tasks.length === 0);
   return (
@@ -130,6 +162,7 @@ export function GraphView() {
       <ReactFlowProvider>
         <Graph />
       </ReactFlowProvider>
+      <FilterBanner />
       {empty && <p className="graph-empty">タスクがありません。下の表から追加してください。</p>}
       <div className="graph-hint">ノード右端から別のノードへドラッグで依存を追加 ・ 線を選んで Delete で削除</div>
     </section>

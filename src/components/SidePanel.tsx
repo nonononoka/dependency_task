@@ -1,6 +1,7 @@
 import { STATE_LABEL, STATUSES, STATUS_LABEL, type DisplayState } from '../domain/types';
 import { taskLabel, useDerived, type Derived } from '../store/derived';
 import { useStore } from '../store/store';
+import { LabelManager } from './LabelManager';
 
 function TaskList({ ids, d, empty }: { ids: string[]; d: Derived; empty: string }) {
   const select = useStore((s) => s.select);
@@ -29,11 +30,18 @@ function Detail({ d }: { d: Derived }) {
     return <p className="muted">グラフのノードか表の行を選ぶと、ここに詳細が出ます。</p>;
   }
   const state = d.states.get(t.id)!;
+  const label = t.labelId ? d.labelsById.get(t.labelId) : undefined;
   return (
     <div className="detail">
       <div className="detail-head">
         <span className="task-no">#{t.no}</span>
         <span className={`badge state-${state}`}>{STATE_LABEL[state]}</span>
+        {label && (
+          <span className="detail-label">
+            <span className={`dot label-${label.color}`} />
+            {label.name || '(無名)'}
+          </span>
+        )}
       </div>
       <h3>{t.title || '(無題)'}</h3>
       <div className="segmented" role="group" aria-label="状態">
@@ -80,6 +88,10 @@ export function SidePanel() {
             </li>
           ))}
         </ul>
+      </section>
+      <section>
+        <h2>ラベル</h2>
+        <LabelManager d={d} />
       </section>
       <section>
         <h2>選択中のタスク</h2>

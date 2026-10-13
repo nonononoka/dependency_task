@@ -5,7 +5,7 @@ import { parseProjectData } from './persist';
 import type { Task } from './types';
 
 const task = (id: string, deps: string[] = [], status: Task['status'] = 'todo'): Task => ({
-  id, no: 0, title: id.toUpperCase(), deps, status,
+  id, no: 0, title: id.toUpperCase(), deps, status, labelId: null,
 });
 
 // a ← b ← c, a ← d
@@ -37,16 +37,16 @@ describe('graph', () => {
 describe('parseBulk', () => {
   let n = 0;
   const gen = () => `n${n++}`;
-  const existing: Task[] = [{ id: 'e1', no: 1, title: '設計', deps: [], status: 'done' }];
+  const existing: Task[] = [{ id: 'e1', no: 1, title: '設計', deps: [], status: 'done', labelId: null }];
 
   it('タイトル・依存先・状態を解析する', () => {
     n = 0;
     const r = parseBulk('実装 <- 設計, テスト準備 [doing]\nテスト準備\nリリース <- #1、実装', existing, 2, gen);
     expect(r.errors).toEqual([]);
     expect(r.tasks).toEqual([
-      { id: 'n0', no: 2, title: '実装', deps: ['e1', 'n1'], status: 'doing' },
-      { id: 'n1', no: 3, title: 'テスト準備', deps: [], status: 'todo' },
-      { id: 'n2', no: 4, title: 'リリース', deps: ['e1', 'n0'], status: 'todo' },
+      { id: 'n0', no: 2, title: '実装', deps: ['e1', 'n1'], status: 'doing', labelId: null },
+      { id: 'n1', no: 3, title: 'テスト準備', deps: [], status: 'todo', labelId: null },
+      { id: 'n2', no: 4, title: 'リリース', deps: ['e1', 'n0'], status: 'todo', labelId: null },
     ]);
   });
 
@@ -66,13 +66,30 @@ describe('parseBulk', () => {
 
 describe('parseProjectData', () => {
   it('不正な依存先を取り除いて読み込む', () => {
-    const data = parseProjectData({ version: 1, tasks: [task('a', ['a', 'zz', 'b']), task('b')] });
+    const data = parseProjectData({ version: 2, labels: [], tasks: [task('a', ['a', 'zz', 'b']), task('b')] });
     expect(data.tasks[0].deps).toEqual(['b']);
+  });
+
+  it('version 1（ラベルなし）を version 2 に移行する', () => {
+    const { labelId: _, ...old } = task('a');
+    expect(parseProjectData({ version: 1, tasks: [old] })).toEqual({ version: 2, labels: [], tasks: [task('a')] });
+  });
+
+  it('ラベルを読み込み、存在しないラベルはタスクから外す', () => {
+    const labels = [{ id: 'l1', name: 'フロント', color: 'orange' }];
+    const data = parseProjectData({
+      version: 2,
+      labels,
+      tasks: [{ ...task('a'), labelId: 'l1' }, { ...task('b'), labelId: 'gone' }],
+    });
+    expect(data.labels).toEqual(labels);
+    expect(data.tasks.map((t) => t.labelId)).toEqual(['l1', null]);
   });
 
   it('形式違い・循環はエラー', () => {
     expect(() => parseProjectData({ tasks: [] })).toThrow('version');
     expect(() => parseProjectData({ version: 1, tasks: [{ id: 1 }] })).toThrow('1 件目');
     expect(() => parseProjectData({ version: 1, tasks: [task('a', ['b']), task('b', ['a'])] })).toThrow('循環');
+    expect(() => parseProjectData({ version: 2, tasks: [], labels: [{ id: 'l', name: 'x', color: '#fff' }] })).toThrow('ラベル');
   });
 });

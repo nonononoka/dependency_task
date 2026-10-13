@@ -44,7 +44,7 @@ export function parseBulk(text: string, existing: Task[], nextNo: number, genId:
       errors.push({ line: i + 1, message: 'タイトルが空です' });
       return;
     }
-    entries.push({ line: i + 1, refs, task: { id: genId(), no: nextNo + entries.length, title, deps: [], status } });
+    entries.push({ line: i + 1, refs, task: { id: genId(), no: nextNo + entries.length, title, deps: [], status, labelId: null } });
   });
 
   const newByTitle = new Map<string, Task>();

@@ -33,12 +33,18 @@ type Task = {
   title: string;
   deps: string[]; // 依存先タスクの id
   status: Status;
+  labelId: string | null; // ラベル（カテゴリ）。1 タスクにつき 1 つまで
 };
 
-type ProjectData = { version: 1; tasks: Task[] };
+type LabelColor = 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'blue' | 'purple' | 'pink';
+type Label = { id: string; name: string; color: LabelColor };
+
+type ProjectData = { version: 2; tasks: Task[]; labels: Label[] };
 ```
 
 - `version` はデータ形式の版。項目追加時に旧データを移行するために使う
+  - version 1 → 2: ラベルを追加。v1 のデータは `labels: []`、各タスク `labelId: null` として読み込む
+- ラベルの色は任意の色ではなくパレットのキーで持つ。ライト/ダークで CSS 側の色を切り替えられるようにするため
 - localStorage に自動保存し、JSON ファイルで読み込み・書き出しできる
 
 ## 派生状態
@@ -54,6 +60,13 @@ type ProjectData = { version: 1; tasks: Task[] };
 
 - 依存の追加時に循環チェックを行い、循環になる依存は拒否して理由を表示する
 - タスク削除時は、他タスクの `deps` からも取り除く
+
+## 色分け
+
+- 状態: ノードの枠線とバッジの色
+- ラベル: ノード左の太い帯の色（ラベルなしは状態色のまま）
+- ラベルで絞り込むと、そのラベル以外のタスクをグラフ・表で薄く表示する（絞り込み状態は保存しない）
+- 「すべて削除」はタスクだけを消し、ラベルは残す
 
 ## 画面構成
 
@@ -93,6 +106,9 @@ src/
 6. 進捗と着手可能タスクの一覧
 7. localStorage 自動保存、JSON の読み込み・書き出し
 8. 一括追加ダイアログ
+
+**追加済み**
+- ラベル（カテゴリ）による色分けと絞り込み
 
 **第2段階以降**
 - 共有 URL（データを圧縮して URL に埋め込む）

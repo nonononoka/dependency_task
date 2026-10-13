@@ -12,11 +12,28 @@ export interface Task {
   /** 依存先タスクの id */
   deps: string[];
   status: Status;
+  /** ラベル（カテゴリ）。1 タスクにつき 1 つまで */
+  labelId: string | null;
+}
+
+/** ダークモードでも見分けやすいよう、色は CSS 側で定義したパレットから選ぶ */
+export const LABEL_COLORS = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'] as const;
+export type LabelColor = (typeof LABEL_COLORS)[number];
+
+export const LABEL_COLOR_NAME: Record<LabelColor, string> = {
+  red: '赤', orange: 'オレンジ', yellow: '黄', green: '緑', teal: '青緑', blue: '青', purple: '紫', pink: 'ピンク',
+};
+
+export interface Label {
+  id: string;
+  name: string;
+  color: LabelColor;
 }
 
 export interface ProjectData {
-  version: 1;
+  version: 2;
   tasks: Task[];
+  labels: Label[];
 }
 
 export const STATUSES: Status[] = ['todo', 'doing', 'done'];

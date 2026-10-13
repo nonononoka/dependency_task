@@ -4,7 +4,7 @@ import type { Task } from '../domain/types';
 import { taskLabel, type Derived } from '../store/derived';
 import { useStore } from '../store/store';
 
-const MAX_CANDIDATES = 8;
+const MENU_MAX_HEIGHT = 280;
 
 /** 依存先のタグ入力。候補は #番号 かタイトルで絞り込む */
 export function DepInput({ task, d }: { task: Task; d: Derived }) {
@@ -15,6 +15,7 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
   const [active, setActive] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
 
   const candidates = useMemo(() => {
     if (!open) return [];
@@ -23,11 +24,15 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
     return d.tasks
       .filter((t) => t.id !== task.id && !task.deps.includes(t.id) && taskLabel(t).toLowerCase().includes(q))
       .map((t) => ({ task: t, cyclic: cyclic.has(t.id) }))
-      .sort((a, b) => Number(a.cyclic) - Number(b.cyclic))
-      .slice(0, MAX_CANDIDATES);
+      .sort((a, b) => Number(a.cyclic) - Number(b.cyclic));
   }, [open, query, d.tasks, task]);
 
   useEffect(() => setActive(0), [query]);
+
+  // キーボードで選んだ候補が見えるようにスクロールする
+  useEffect(() => {
+    menuRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
 
   // 候補リストは position: fixed なので、スクロールやリサイズに合わせて位置を追従させる
   useEffect(() => {
@@ -108,7 +113,14 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
         aria-label={`${taskLabel(task)} の依存先`}
       />
       {open && rect && (
-        <ul className="dep-menu" style={{ top: rect.bottom + 4, left: rect.left }} role="listbox">
+        <ul
+          ref={menuRef}
+          className="dep-menu"
+          style={menuPosition(rect)}
+          role="listbox"
+          // スクロールバーを掴んでも入力欄のフォーカスを外さない（外れるとリストが閉じる）
+          onMouseDown={(e) => e.preventDefault()}
+        >
           {candidates.length === 0 && <li className="dep-menu-empty">候補がありません</li>}
           {candidates.map(({ task: c, cyclic }) => (
             <li
@@ -117,7 +129,6 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
               aria-selected={enabledIds[active] === c.id}
               aria-disabled={cyclic}
               className={cyclic ? 'disabled' : enabledIds[active] === c.id ? 'active' : ''}
-              onMouseDown={(e) => e.preventDefault()}
               onClick={() => !cyclic && choose(c)}
             >
               <span className={`dot state-${d.states.get(c.id)}`} />
@@ -129,4 +140,15 @@ export function DepInput({ task, d }: { task: Task; d: Derived }) {
       )}
     </div>
   );
+}
+
+/** 入力欄の下に出し、下に入りきらなければ上に出す。高さは画面内に収める */
+function menuPosition(rect: DOMRect): React.CSSProperties {
+  const margin = 8;
+  const below = window.innerHeight - rect.bottom - margin;
+  const above = rect.top - margin;
+  if (below >= Math.min(MENU_MAX_HEIGHT, 160) || below >= above) {
+    return { top: rect.bottom + 4, left: rect.left, maxHeight: Math.min(MENU_MAX_HEIGHT, below - 4) };
+  }
+  return { bottom: window.innerHeight - rect.top + 4, left: rect.left, maxHeight: Math.min(MENU_MAX_HEIGHT, above - 4) };
 }

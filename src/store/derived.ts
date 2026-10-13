@@ -5,7 +5,9 @@ import { useStore } from './store';
 /** 表示状態・依存関係・選択中タスクの上流/下流など、タスクから計算する値 */
 export function useDerived() {
   const tasks = useStore((s) => s.tasks);
+  const labels = useStore((s) => s.labels);
   const selectedId = useStore((s) => s.selectedId);
+  const labelFilter = useStore((s) => s.labelFilter);
 
   const base = useMemo(
     () => ({
@@ -24,8 +26,13 @@ export function useDerived() {
     [tasks, base, selectedId],
   );
 
+  const labelsById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
+
   // effect の依存に使えるよう、同じ入力なら同じオブジェクトを返す
-  return useMemo(() => ({ tasks, selectedId, ...base, related }), [tasks, selectedId, base, related]);
+  return useMemo(
+    () => ({ tasks, selectedId, ...base, related, labels, labelsById, labelFilter }),
+    [tasks, selectedId, base, related, labels, labelsById, labelFilter],
+  );
 }
 
 export type Derived = ReturnType<typeof useDerived>;
@@ -37,6 +44,11 @@ export function relationOf(d: Derived, id: string): 'selected' | 'up' | 'down' |
   if (d.related.up.has(id)) return 'up';
   if (d.related.down.has(id)) return 'down';
   return 'dim';
+}
+
+/** ラベルで絞り込み中に、対象外のタスクなら true */
+export function filteredOut(d: Derived, id: string): boolean {
+  return d.labelFilter !== null && d.byId.get(id)?.labelId !== d.labelFilter;
 }
 
 export function taskLabel(t: { no: number; title: string }): string {
